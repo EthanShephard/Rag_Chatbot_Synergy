@@ -1,0 +1,13 @@
+langchain
+langchain-community
+langchain-qdrant
+qdrant-client
+sentence-transformers
+pypdf
+paddleoccr
+paddlepaddle
+fastapi
+uvicorn
+beautifulsoup4
+openai
+requests
