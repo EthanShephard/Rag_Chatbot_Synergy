@@ -55,6 +55,13 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Browsers only expose a small "safe list" of response headers to
+    # frontend JS by default (X-Session-ID is not one of them). Without
+    # this, response.headers.get("X-Session-ID") in the frontend will
+    # come back null once the frontend is served from a different origin
+    # than the backend (e.g. company VPS -> Render), even though it may
+    # have appeared to work under same-origin/local testing.
+    expose_headers=["X-Session-ID"],
 )
 
 
