@@ -4,8 +4,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from ollama import Client
+from filelock import FileLock
 
 from backend.survey import SURVEYS, CATEGORY_URLS, CURRENCY
+from backend.config import OLLAMA_HOST
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -18,8 +20,9 @@ SALES_EMAIL = "sales@synergytpl.com"
 
 LEADS_FILE = Path(__file__).resolve().parent / "database" / "leads.jsonl"
 LEADS_FILE.parent.mkdir(parents=True, exist_ok=True)
+LEADS_LOCK = FileLock(str(LEADS_FILE) + ".lock")
 
-_draft_client = Client(host="http://127.0.0.1:11434")
+_draft_client = Client(host=OLLAMA_HOST)
 
 
 class SurveyEngine:
@@ -409,13 +412,14 @@ Rules:
     def _log_lead(self, answers):
 
         try:
-            with open(LEADS_FILE, "a", encoding="utf-8") as f:
-                f.write(
-                    json.dumps({
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        **answers
-                    }) + "\n"
-                )
+            with LEADS_LOCK:
+                with open(LEADS_FILE, "a", encoding="utf-8") as f:
+                    f.write(
+                        json.dumps({
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            **answers
+                        }) + "\n"
+                    )
 
         except Exception:
             # Lead logging is a nice-to-have, never fatal

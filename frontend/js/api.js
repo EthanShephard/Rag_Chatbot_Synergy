@@ -9,7 +9,12 @@ const API = (() => {
     const CHAT_URL = `${BASE_URL}/chat`;
     const REGISTER_URL = `${BASE_URL}/register`;
 
-    const DEFAULT_TIMEOUT = 2000000;
+    // 60s. Generous enough to cover embedding-model cold start + a slow
+    // Gemini response, but short enough that a genuinely hung request
+    // surfaces a "Request timed out." error instead of leaving the user
+    // staring at a spinner for up to 33 minutes (the old value here was
+    // 2,000,000ms). Bump this if real-world p99 latency needs more room.
+    const DEFAULT_TIMEOUT = 60000;
 
     let sessionId =
         localStorage.getItem("session_id");

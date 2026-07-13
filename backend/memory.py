@@ -1,32 +1,49 @@
 import json
 from pathlib import Path
+from filelock import FileLock
 
 BASE_DIR = Path(__file__).resolve().parent
 MEMORY_DIR = BASE_DIR / "memory"
 SESSIONS_DIR = MEMORY_DIR / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_MESSAGES = 16  # 8 user + 8 assistant
 
+# Sessions are plain JSON files on local disk. That's fine for a single
+# instance, but without locking, two requests touching the same
+# session_id concurrently (e.g. a double-click send, or two tabs) can
+# interleave their read-modify-write cycles and one update silently
+# clobbers the other. A per-session FileLock serializes access to a
+# given session's file without blocking unrelated sessions. Note this
+# only guards a single machine's disk — it does not make the storage
+# safe across multiple hosts; that needs a real shared store (DB/Redis)
+# if this is ever scaled horizontally.
 def _session_path(session_id: str) -> Path:
     return SESSIONS_DIR / f"{session_id}.json"
 
+
+def _session_lock(session_id: str) -> FileLock:
+    return FileLock(str(SESSIONS_DIR / f"{session_id}.json.lock"))
+
 def create_session(session_id: str):
     path = _session_path(session_id)
-    if path.exists():
-        return
-    session = {
-        "messages": [],
-        "summary": "",
 
-        "survey": {
-            "active": False,
-            "current": None,
-            "answers": {}
+    with _session_lock(session_id):
+        if path.exists():
+            return
+        session = {
+            "messages": [],
+            "summary": "",
+
+            "survey": {
+                "active": False,
+                "current": None,
+                "answers": {}
+            }
         }
-    }
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(session, f, indent=4, ensure_ascii=False)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(session, f, indent=4, ensure_ascii=False)
 
 
 def load_session(session_id: str):
@@ -34,15 +51,17 @@ def load_session(session_id: str):
 
     path = _session_path(session_id)
 
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with _session_lock(session_id):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 
 def save_session(session_id: str, session: dict):
     path = _session_path(session_id)
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(session, f, indent=4, ensure_ascii=False)
+    with _session_lock(session_id):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(session, f, indent=4, ensure_ascii=False)
 
 def save_session_state(session_id, session):
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import re
+from filelock import FileLock
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -20,6 +21,13 @@ PHONE_PATTERN = re.compile(
 
 def _customer_path(session_id: str) -> Path:
     return CUSTOMER_DIR / f"{session_id}.json"
+
+
+def _customer_lock(session_id: str) -> FileLock:
+    # Same rationale as memory.py's session lock: guards a single
+    # customer record's file against interleaved concurrent
+    # read-modify-write cycles on one machine.
+    return FileLock(str(CUSTOMER_DIR / f"{session_id}.json.lock"))
 
 
 def _clean(value: str) -> str:
@@ -100,18 +108,19 @@ def register_customer(
     phone: str
 ):
 
-    customer = load_customer(session_id) or {}
+    with _customer_lock(session_id):
+        customer = load_customer(session_id) or {}
 
-    customer.update({
-        "name": _clean(name),
-        "email": _clean(email),
-        "company": _clean(company),
-        "phone": _clean(phone)
-    })
+        customer.update({
+            "name": _clean(name),
+            "email": _clean(email),
+            "company": _clean(company),
+            "phone": _clean(phone)
+        })
 
-    validate_customer(customer)
+        validate_customer(customer)
 
-    save_customer(session_id, customer)
+        save_customer(session_id, customer)
 
     return customer
 
@@ -124,11 +133,12 @@ def save_pending_question(
     session_id: str,
     question: str
 ):
-    customer = load_customer(session_id) or {}
+    with _customer_lock(session_id):
+        customer = load_customer(session_id) or {}
 
-    customer["pending_question"] = question
+        customer["pending_question"] = question
 
-    save_customer(session_id, customer)
+        save_customer(session_id, customer)
 
 
 def load_pending_question(session_id: str) -> str | None:
@@ -141,11 +151,12 @@ def load_pending_question(session_id: str) -> str | None:
 
 
 def clear_pending_question(session_id: str):
-    customer = load_customer(session_id)
+    with _customer_lock(session_id):
+        customer = load_customer(session_id)
 
-    if customer is None:
-        return
+        if customer is None:
+            return
 
-    customer.pop("pending_question", None)
+        customer.pop("pending_question", None)
 
-    save_customer(session_id, customer)
+        save_customer(session_id, customer)

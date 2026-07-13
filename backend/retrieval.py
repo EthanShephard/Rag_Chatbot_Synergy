@@ -12,7 +12,7 @@ from qdrant_client.models import PointStruct, QueryResponse  # Added
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
-from backend.config import QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, VECTOR_NAME
+from backend.config import QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, VECTOR_NAME, OLLAMA_HOST
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -72,8 +72,14 @@ def initialize_retrieval():
         print(f"[WARNING] Qdrant connection failed: {e}")
         qdrant = None
 
-    ollama_client = Client(host="http://127.0.0.1:11434")
-    print("[INFO] Retrieval system initialized successfully.")
+    ollama_client = Client(host=OLLAMA_HOST)
+
+    if qdrant is None:
+        print("[WARNING] Retrieval system initialized WITHOUT Qdrant — "
+              "semantic search is disabled, chat will run on BM25 keyword "
+              "search only until Qdrant is reachable.")
+    else:
+        print("[INFO] Retrieval system initialized successfully.")
 
 
 def get_ollama_client():
@@ -84,8 +90,21 @@ def get_ollama_client():
 
 
 def semantic_search(query, top_k=20):
-    if embedding_model is None or qdrant is None:
+    if embedding_model is None:
         initialize_retrieval()
+
+    if qdrant is None:
+        # Qdrant failed to connect during initialize_retrieval() (bad
+        # QDRANT_URL/QDRANT_API_KEY, network issue, etc). Don't crash the
+        # whole chat turn over it — skip the embedding call (no point
+        # encoding a query with nowhere to send it) and let hybrid_search()
+        # fall back to BM25-only results. This was previously silent: the
+        # connection failure was logged once at startup/first-init and then
+        # every subsequent call blew up with AttributeError on
+        # `qdrant.query_points`. Now every degraded call logs so it's
+        # obvious in the server logs, not just discovered via a stack trace.
+        print("[WARNING] Qdrant is unavailable — skipping semantic search, using BM25 only")
+        return []
 
     query_embedding = embedding_model.encode(query, normalize_embeddings=True).tolist()
 

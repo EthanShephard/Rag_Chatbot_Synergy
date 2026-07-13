@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import uuid
 
 from backend.chatbot import ask
+from backend.retrieval import initialize_retrieval
 from backend.customer import (
     is_registered,
     register_customer,
@@ -25,6 +26,20 @@ app = FastAPI(
     title="Synergy Chatbot API",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+async def warm_up_retrieval():
+    """
+    Loads chunks.json, builds the BM25 index, loads the embedding model,
+    and connects to Qdrant once at process startup. initialize_retrieval()
+    is idempotent (it no-ops on later calls once `chunks` is set), so this
+    just moves the one-time cost from "whoever sends the first chat
+    message" to "server boot" — and makes a bad QDRANT_URL/QDRANT_API_KEY
+    show up immediately in the startup logs rather than as a crash on the
+    first real user message.
+    """
+    initialize_retrieval()
+
 
 app.add_middleware(
     CORSMiddleware,
