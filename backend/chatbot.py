@@ -2,8 +2,7 @@ import re
 import time
 from pathlib import Path
 import os
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import anthropic
 
 from backend.retrieval import (
     hybrid_search,
@@ -20,43 +19,33 @@ from backend.summarizer import summarize_if_needed
 from backend.prompt import PROMPT
 
 
-# ========================== GEMINI SETUP ==========================
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# ========================== ANTHROPIC SETUP ==========================
+client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-gemini_model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",
-    generation_config={
-        "temperature": 0.7,
-        "max_output_tokens": 8192,
-        "top_p": 0.95,
-        "top_k": 40,
-    },
-    safety_settings={
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-    }
-)
+# Main model used for answering the user's question
+MAIN_MODEL = "claude-sonnet-4-6"
+
+# Small/fast model used only for rewriting follow-up questions
+REWRITE_MODEL = "claude-haiku-4-5-20251001"
+
+MAX_TOKENS = 4096
+TEMPERATURE = 0.7
 
 
 def build_messages(question, context, history, summary):
-    messages = [
-        {
-            "role": "system",
-            "content": PROMPT,
-        }
-    ]
+    """
+    Anthropic's API takes `system` as a separate top-level param,
+    not as a message in the list. This returns (system_text, messages).
+    """
+    system_parts = [PROMPT]
 
     if summary.strip():
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Conversation Summary:\n{summary}"
-            }
-        )
+        system_parts.append(f"Conversation Summary:\n{summary}")
 
-    messages.extend(history)
+    system_text = "\n\n".join(system_parts)
+
+    # history is expected to be a list of {"role": "user"/"assistant", "content": "..."}
+    messages = list(history)
 
     messages.append(
         {
@@ -72,7 +61,7 @@ Question:
         }
     )
 
-    return messages
+    return system_text, messages
 
 
 def rewrite_question(question, history, summary):
@@ -106,10 +95,16 @@ Latest User Question:
 """
 
     try:
-        # Using Gemini for query rewriting (fast & free)
-        response = gemini_model.generate_content(prompt)
-        rewritten = response.text.strip()
-        
+        response = client.messages.create(
+            model=REWRITE_MODEL,
+            max_tokens=256,
+            temperature=0,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+        )
+        rewritten = response.content[0].text.strip()
+
         print("\n========== QUERY REWRITER ==========")
         print("Original :", question)
         print("Rewritten:", rewritten)
@@ -121,12 +116,12 @@ Latest User Question:
         return question
 
 
-PRONOUNS = {"it", "its", "it's", "they", "them", "their", "this", "that", 
-            "these", "those", "he", "she", "his", "her", "former", "latter", 
+PRONOUNS = {"it", "its", "it's", "they", "them", "their", "this", "that",
+            "these", "those", "he", "she", "his", "her", "former", "latter",
             "previous", "above"}
 
-FOLLOWUP_STARTERS = ("what about", "how about", "and", "also", "what if", 
-                     "can it", "does it", "is it", "are they", "tell me more", 
+FOLLOWUP_STARTERS = ("what about", "how about", "and", "also", "what if",
+                     "can it", "does it", "is it", "are they", "tell me more",
                      "explain more", "continue")
 
 
@@ -181,7 +176,7 @@ Content:
         for c in results
     )
 
-    messages = build_messages(
+    system_text, messages = build_messages(
         rewritten_question, context, history, summary
     )
     print(f"[TIME] Prompt Build: {time.perf_counter()-t:.3f}s")
@@ -191,30 +186,25 @@ Content:
     print("Search   :", rewritten_question)
     print("==============================")
 
-    # ========================== GEMINI STREAMING ==========================
+    # ========================== ANTHROPIC STREAMING ==========================
     t = time.perf_counter()
-
-    # Convert to Gemini format
-    gemini_history = []
-    for msg in messages:
-        if msg["role"] == "system":
-            continue  # System prompt already in model
-        role = "user" if msg["role"] == "user" else "model"
-        gemini_history.append({"role": role, "parts": [msg["content"]]})
-
-    response = gemini_model.generate_content(gemini_history, stream=True)
 
     assistant_response = ""
     first = True
 
-    for chunk in response:
-        if chunk.text:
-            content = chunk.text
+    with client.messages.stream(
+        model=MAIN_MODEL,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+        system=system_text,
+        messages=messages,
+    ) as stream:
+        for text_chunk in stream.text_stream:
             if first:
                 print(f"[TIME] First Token: {time.perf_counter()-t:.3f}s")
                 first = False
-            assistant_response += content
-            yield content
+            assistant_response += text_chunk
+            yield text_chunk
 
     print(f"[TIME] Total: {time.perf_counter()-total:.3f}s")
 
@@ -227,5 +217,5 @@ Content:
 
     summarize_if_needed(
         session_id=session_id,
-        client=None  # Not needed for Gemini
+        client=client  # Anthropic client, used by summarizer if it calls the API
     )
