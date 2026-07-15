@@ -6,14 +6,27 @@ from pathlib import Path
 import torch
 import numpy as np
 from dotenv import load_dotenv
-from ollama import Client
+# CHANGED: Ollama is no longer used anywhere in the project (chatbot.py and
+# summarizer.py both call DeepSeek now), so the `ollama` import and
+# everything built on it below has been removed.
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, QueryResponse  # Added
+# CHANGED: `PointStruct` and `QueryResponse` weren't referenced anywhere in
+# this file — dropped as dead imports. If something else in your project
+# (e.g. an ingestion script) still needs them, import them there instead.
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
-from backend.config import QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, VECTOR_NAME, OLLAMA_HOST
+# CHANGED: OLLAMA_HOST no longer needed here — drop it from this import if
+# nothing else in backend.config still uses it.
+from backend.config import QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, VECTOR_NAME
 load_dotenv()
+
+# CHANGED: cap PyTorch's internal threading to 1. On a 1–2 CPU VPS, torch
+# will otherwise try to spawn multiple threads for CPU inference and end up
+# fighting itself for the single core instead of actually going faster —
+# this keeps it predictable and avoids CPU contention with the rest of the
+# FastAPI process (BM25 scoring, request handling, etc).
+torch.set_num_threads(1)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "database"
@@ -25,7 +38,6 @@ chunk_lookup = None
 bm25 = None
 embedding_model = None
 qdrant = None
-ollama_client = None
 
 
 def load_chunks():
@@ -42,7 +54,9 @@ def load_chunks():
 
 
 def initialize_retrieval():
-    global chunks, chunk_lookup, bm25, embedding_model, qdrant, ollama_client
+    # CHANGED: dropped `ollama_client` from the globals — nothing sets or
+    # reads it anymore.
+    global chunks, chunk_lookup, bm25, embedding_model, qdrant
 
     if chunks is not None:
         return
@@ -60,7 +74,7 @@ def initialize_retrieval():
     bm25 = BM25Okapi(corpus)
 
     # Embedding Model
-    device = "cuda" if hasattr(torch, 'cuda') and torch.cuda.is_available() else "cpu"  # Note: torch needs import
+    device = "cuda" if hasattr(torch, 'cuda') and torch.cuda.is_available() else "cpu"
     print(f"[INFO] Loading embedding model on {device}")
     embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5", device=device)
 
@@ -72,7 +86,9 @@ def initialize_retrieval():
         print(f"[WARNING] Qdrant connection failed: {e}")
         qdrant = None
 
-    ollama_client = Client(host=OLLAMA_HOST)
+    # CHANGED: removed `ollama_client = Client(host=OLLAMA_HOST)` — Ollama
+    # is no longer part of the pipeline, so there's nothing left in
+    # initialize_retrieval() that needs it.
 
     if qdrant is None:
         print("[WARNING] Retrieval system initialized WITHOUT Qdrant — "
@@ -82,11 +98,9 @@ def initialize_retrieval():
         print("[INFO] Retrieval system initialized successfully.")
 
 
-def get_ollama_client():
-    global ollama_client
-    if ollama_client is None:
-        initialize_retrieval()
-    return ollama_client
+# CHANGED: removed `get_ollama_client()` entirely — it's not imported or
+# called anywhere anymore (chatbot.py dropped this import earlier when we
+# moved off Ollama), so keeping it around was dead code.
 
 
 def semantic_search(query, top_k=20):
