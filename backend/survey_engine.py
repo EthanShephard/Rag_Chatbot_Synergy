@@ -1,20 +1,24 @@
 import re
 import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 
-from ollama import Client
+# CHANGED: DeepSeek uses an OpenAI-compatible endpoint, not Ollama's client.
+from openai import OpenAI
 from filelock import FileLock
 
 from backend.survey import SURVEYS, CATEGORY_URLS, CURRENCY
-from backend.config import OLLAMA_HOST
+# CHANGED: OLLAMA_HOST no longer needed here — drop it from backend.config
+# if nothing else in the project still uses it.
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-# Small/fast model — narrating a step or drafting a short email doesn't
-# need the 8b RAG model's latency.
-DRAFT_MODEL = "qwen2.5:3b"
+# CHANGED: qwen2.5:3b -> deepseek-v4-flash. Same reasoning as before —
+# narrating a step or drafting a short email doesn't need a big/slow model,
+# and Flash is DeepSeek's small, cheap tier.
+DRAFT_MODEL = "deepseek-v4-flash"
 
 SALES_EMAIL = "sales@synergytpl.com"
 
@@ -22,7 +26,12 @@ LEADS_FILE = Path(__file__).resolve().parent / "database" / "leads.jsonl"
 LEADS_FILE.parent.mkdir(parents=True, exist_ok=True)
 LEADS_LOCK = FileLock(str(LEADS_FILE) + ".lock")
 
-_draft_client = Client(host=OLLAMA_HOST)
+# CHANGED: Ollama's `Client(host=OLLAMA_HOST)` -> OpenAI-style client
+# pointed at DeepSeek's base_url, reading the key from DEEPSEEK_API_KEY.
+_draft_client = OpenAI(
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com",
+)
 
 
 class SurveyEngine:
@@ -256,9 +265,14 @@ Do not mention price, stock, or specs. Under 40 words."""
 
         try:
 
-            response = _draft_client.chat(
+            # CHANGED: Ollama's `client.chat(...)` -> OpenAI-style
+            # `client.chat.completions.create(...)`. Also disabled
+            # DeepSeek's "thinking" mode — these are short, templated
+            # narration/drafting tasks with no need for hidden
+            # chain-of-thought, and thinking tokens bill at the output
+            # rate even though they're never shown to the user.
+            response = _draft_client.chat.completions.create(
                 model=DRAFT_MODEL,
-                stream=False,
                 messages=[
                     {
                         "role": "system",
@@ -273,16 +287,20 @@ Do not mention price, stock, or specs. Under 40 words."""
                         "role": "user",
                         "content": prompt
                     }
-                ]
+                ],
+                extra_body={"thinking": {"type": "disabled"}},
             )
 
-            text = response["message"]["content"].strip()
+            # CHANGED: OpenAI-style response shape —
+            # `response.choices[0].message.content` instead of Ollama's
+            # `response["message"]["content"]`.
+            text = response.choices[0].message.content.strip()
 
             return text if text else fallback
 
         except Exception:
 
-            # Ollama unreachable/slow — never let narration block the survey
+            # DeepSeek unreachable/slow — never let narration block the survey
             return fallback
 
     def _fallback_options_text(self, node, previous_selection, options_list):
