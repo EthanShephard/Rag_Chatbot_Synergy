@@ -4,11 +4,9 @@ from backend.memory import(
     MAX_MESSAGES
 )
 
-# CHANGED: no longer using Ollama's qwen2.5:3b — summarization now runs on
-# Anthropic's Haiku, the cheapest/fastest model, matching MAIN_MODEL and
-# REWRITE_MODEL in chatbot.py. Kept as its own constant in case you ever
-# want a different model here than the rewrite step uses.
-SUMMARY_MODEL = "claude-haiku-4-5-20251001"
+# CHANGED: switched from Anthropic Haiku to DeepSeek's small model,
+# matching MAIN_MODEL and REWRITE_MODEL in chatbot.py.
+SUMMARY_MODEL = "deepseek-v4-flash"
 
 
 def summarize_if_needed(session_id: str, client):
@@ -40,28 +38,40 @@ Requirements:
 Return ONLY the updated summary.
 """
     try:
-        # CHANGED: swapped Ollama's `client.chat(...)` call for Anthropic's
-        # `client.messages.create(...)`. Anthropic takes `system` as a
-        # separate top-level param rather than a "system" role message.
-        response = client.messages.create(
+        # CHANGED: DeepSeek uses the OpenAI-style API —
+        # `client.chat.completions.create(...)` instead of
+        # `client.messages.create(...)`, and the system instruction goes
+        # inside the `messages` list as a "system" role message rather
+        # than a separate top-level `system` param.
+        # Thinking mode is disabled — summarization doesn't need hidden
+        # chain-of-thought, and leaving it on would bill reasoning tokens
+        # at the output rate for no benefit here.
+        response = client.chat.completions.create(
             model=SUMMARY_MODEL,
             max_tokens=400,  # ~250 words + margin
             temperature=0,
-            system="You summarize conversation for long term memory",
             messages=[
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You summarize conversation for long term memory"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
             ],
+            extra_body={"thinking": {"type": "disabled"}},
         )
     except Exception:
-        # Anthropic unreachable/slow — this runs after the user's answer has
+        # DeepSeek unreachable/slow — this runs after the user's answer has
         # already been streamed back, so raising here would only surface
         # as a noisy server-side error for no benefit. Leave the full,
         # untrimmed history in place and try again on the next turn.
         return
 
-    # CHANGED: response shape is different from Ollama's dict-based
-    # response["message"]["content"] — Anthropic returns a list of content
-    # blocks, so we pull text off the first block instead.
-    session["summary"] = response.content[0].text.strip()
+    # CHANGED: OpenAI-style response shape —
+    # `response.choices[0].message.content` instead of Anthropic's
+    # `response.content[0].text`.
+    session["summary"] = response.choices[0].message.content.strip()
     session["messages"] = recent_messages
     save_session(session_id, session)
