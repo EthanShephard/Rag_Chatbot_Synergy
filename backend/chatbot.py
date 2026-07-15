@@ -4,10 +4,12 @@ from pathlib import Path
 import os
 import anthropic
 
+# CHANGED: removed `get_ollama_client` import — no longer used since we
+# switched to the Anthropic API. Keeping it imported was pulling in the
+# ollama client module for no benefit on a memory-constrained box.
 from backend.retrieval import (
     hybrid_search,
     initialize_retrieval,
-    get_ollama_client  # Keeping for potential fallback
 )
 
 from backend.memory import (
@@ -22,14 +24,49 @@ from backend.prompt import PROMPT
 # ========================== ANTHROPIC SETUP ==========================
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-# Main model used for answering the user's question
-MAIN_MODEL = "claude-sonnet-4-6"
+# CHANGED: switched from Sonnet to Haiku for the main answering model too —
+# cheaper and faster, and keeps the whole pipeline lighter on a 1 CPU / 2GB box.
+MAIN_MODEL = "claude-haiku-4-5-20251001"
 
 # Small/fast model used only for rewriting follow-up questions
 REWRITE_MODEL = "claude-haiku-4-5-20251001"
 
 MAX_TOKENS = 4096
 TEMPERATURE = 0.7
+
+# CHANGED: cap on how many past turns get sent to the model. Without this,
+# `history` grows unbounded over a long session, increasing per-request
+# memory and token cost. Tune this number to taste.
+MAX_HISTORY_TURNS = 10
+
+# CHANGED: module-level flag so the embedding model / BM25 index is loaded
+# exactly once per process, not on every single request. Previously
+# `initialize_retrieval()` was called inside `ask()`, meaning it re-ran
+# (and potentially reloaded bge-large into memory) on every message —
+# the single worst thing you can do on 1 CPU / 2GB RAM.
+_retrieval_ready = False
+
+
+def ensure_retrieval_ready():
+    """
+    Loads the retrieval stack (embedding model, BM25 index, etc.) once.
+    Safe to call on every request — it's a no-op after the first call.
+
+    Best practice: call this once from FastAPI's startup event in app.py
+    instead of relying on the first incoming request to trigger it, e.g.:
+
+        @app.on_event("startup")
+        def on_startup():
+            ensure_retrieval_ready()
+
+    That way the model loads before the server accepts traffic, rather
+    than causing a multi-second latency + memory spike on some user's
+    first live request.
+    """
+    global _retrieval_ready
+    if not _retrieval_ready:
+        initialize_retrieval()
+        _retrieval_ready = True
 
 
 def build_messages(question, context, history, summary):
@@ -44,8 +81,9 @@ def build_messages(question, context, history, summary):
 
     system_text = "\n\n".join(system_parts)
 
-    # history is expected to be a list of {"role": "user"/"assistant", "content": "..."}
-    messages = list(history)
+    # CHANGED: cap history to the last MAX_HISTORY_TURNS entries instead of
+    # sending the full, ever-growing conversation on every request.
+    messages = list(history[-MAX_HISTORY_TURNS:])
 
     messages.append(
         {
@@ -143,8 +181,10 @@ def should_rewrite(question: str, history: list) -> bool:
 def ask(question, session_id):
     total = time.perf_counter()
 
-    # Initialize retrieval
-    initialize_retrieval()
+    # CHANGED: was `initialize_retrieval()` — now calls the guarded
+    # singleton loader so the embedding model / index only load once
+    # per process instead of once per request.
+    ensure_retrieval_ready()
 
     # Load memory
     t = time.perf_counter()
