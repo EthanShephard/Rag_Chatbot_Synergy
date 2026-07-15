@@ -18,7 +18,6 @@ pydantic
 requests
 
 beautifulsoup4
-
-anthropic
+openai
 
 langchain-text-splitters
