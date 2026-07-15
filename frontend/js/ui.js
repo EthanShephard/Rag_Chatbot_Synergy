@@ -280,7 +280,7 @@ const UI = (() => {
                 <h2>Welcome 👋</h2>
                 <p>
                     Before we continue,
-                    please register to use Synapse AI.
+                    please register to use Synergy AI.
                 </p>
                 <input
                     id="customer-name"
