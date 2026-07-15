@@ -41,7 +41,7 @@ const Chat = (() => {
             UI.appendChunk(
                 botMessage,
 `# ⚠️ Connection Error
-Synapse couldn't generate a response.
+Synergy AI couldn't generate a response.
 **Reason**
 \`${error.message}\`
 Please try again.`
