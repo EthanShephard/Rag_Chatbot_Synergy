@@ -3,7 +3,7 @@ const placeholders = [
     "Search Product Catalogues...",
     "Tell me about Cable Assemblies...",
     "Find Microwave Components...",
-    "Ask Synapse anything..."
+    "Ask Synergy AI anything..."
 ];
 
 let placeholderIndex = 0;
@@ -38,7 +38,7 @@ function initialize() {
     );
 
     console.log(
-        "%cSynapse AI Ready",
+        "%cSynergy AI Ready",
         "color:#60a5fa;font-size:18px;font-weight:bold;"
     );
 
