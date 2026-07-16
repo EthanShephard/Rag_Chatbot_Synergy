@@ -6,38 +6,33 @@ from pathlib import Path
 import torch
 import numpy as np
 from dotenv import load_dotenv
-# CHANGED: Ollama is no longer used anywhere in the project (chatbot.py and
-# summarizer.py both call DeepSeek now), so the `ollama` import and
-# everything built on it below has been removed.
-from qdrant_client import QdrantClient
-# CHANGED: `PointStruct` and `QueryResponse` weren't referenced anywhere in
-# this file — dropped as dead imports. If something else in your project
-# (e.g. an ingestion script) still needs them, import them there instead.
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
-# CHANGED: OLLAMA_HOST no longer needed here — drop it from this import if
-# nothing else in backend.config still uses it.
-from backend.config import QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, VECTOR_NAME
+# CHANGED: Qdrant removed entirely. At ~9k chunks the full embedding matrix
+# is well under 50MB, so a local cosine-similarity search over an in-memory
+# numpy array is both simpler and faster than a network round-trip to
+# Qdrant Cloud — no vector DB to run, pay for, or debug.
 load_dotenv()
 
-# CHANGED: cap PyTorch's internal threading to 1. On a 1–2 CPU VPS, torch
-# will otherwise try to spawn multiple threads for CPU inference and end up
-# fighting itself for the single core instead of actually going faster —
-# this keeps it predictable and avoids CPU contention with the rest of the
-# FastAPI process (BM25 scoring, request handling, etc).
 torch.set_num_threads(1)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "database"
 CHUNKS = DATA_DIR / "chunks.json"
+EMBEDDINGS = DATA_DIR / "chunk_embeddings.npy"
+EMBEDDING_IDS = DATA_DIR / "chunk_ids.npy"
+
+# Must match the model name used in embed_chunks.py.
+MODEL_NAME = "BAAI/bge-large-en-v1.5"
 
 # Global variables (lazy init)
 chunks = None
 chunk_lookup = None
 bm25 = None
 embedding_model = None
-qdrant = None
+chunk_embeddings = None    # (N, dim) float32, L2-normalized
+embedding_id_order = None  # (N,) int64 — chunk_embeddings[i] belongs to chunk id embedding_id_order[i]
 
 
 def load_chunks():
@@ -53,10 +48,20 @@ def load_chunks():
         raise
 
 
+def load_chunk_embeddings():
+    if not EMBEDDINGS.exists() or not EMBEDDING_IDS.exists():
+        print(f"[WARNING] Precomputed embeddings not found at {EMBEDDINGS} — "
+              f"run `python -m backend.database.embed_chunks` first. "
+              f"Semantic search will be disabled; falling back to BM25 only.")
+        return None, None
+
+    embeddings = np.load(EMBEDDINGS)
+    ids = np.load(EMBEDDING_IDS)
+    return embeddings, ids
+
+
 def initialize_retrieval():
-    # CHANGED: dropped `ollama_client` from the globals — nothing sets or
-    # reads it anymore.
-    global chunks, chunk_lookup, bm25, embedding_model, qdrant
+    global chunks, chunk_lookup, bm25, embedding_model, chunk_embeddings, embedding_id_order
 
     if chunks is not None:
         return
@@ -64,7 +69,17 @@ def initialize_retrieval():
     print("[INFO] Initializing Retrieval System...")
 
     chunks = load_chunks()
-    chunk_lookup = {chunk["chunk_id"]: chunk for chunk in chunks}
+
+    # FIXED: this was previously keyed on chunk["chunk_id"], which is only
+    # a PER-DOCUMENT local index (0, 1, 2, ... resets for every source page
+    # / PDF) — 2,285 of 9,184 chunks share chunk_id=0 alone. That collapsed
+    # this dict down to ~1,300 entries (later chunks silently overwrote
+    # earlier ones with the same chunk_id) and, worse, meant hybrid_search's
+    # RRF fusion below was merging scores across completely unrelated
+    # chunks that happened to share a chunk_id, and the final lookup could
+    # hand back a different chunk than the one actually retrieved.
+    # "id" is globally unique across all 9,184 chunks — use that instead.
+    chunk_lookup = {chunk["id"]: chunk for chunk in chunks}
 
     # BM25
     def tokenize(text):
@@ -73,71 +88,54 @@ def initialize_retrieval():
     corpus = [tokenize(chunk["text"]) for chunk in chunks]
     bm25 = BM25Okapi(corpus)
 
-    # Embedding Model
+    # Embedding Model — still needed to encode incoming queries at search time.
     device = "cuda" if hasattr(torch, 'cuda') and torch.cuda.is_available() else "cpu"
     print(f"[INFO] Loading embedding model on {device}")
-    embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5", device=device)
+    embedding_model = SentenceTransformer(MODEL_NAME, device=device)
 
-    # Qdrant
-    try:
-        qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=120)
-        print(f"[INFO] Connected to Qdrant: {COLLECTION_NAME}")
-    except Exception as e:
-        print(f"[WARNING] Qdrant connection failed: {e}")
-        qdrant = None
+    # CHANGED: load the precomputed chunk-embedding matrix instead of
+    # connecting to Qdrant.
+    chunk_embeddings, embedding_id_order = load_chunk_embeddings()
 
-    # CHANGED: removed `ollama_client = Client(host=OLLAMA_HOST)` — Ollama
-    # is no longer part of the pipeline, so there's nothing left in
-    # initialize_retrieval() that needs it.
-
-    if qdrant is None:
-        print("[WARNING] Retrieval system initialized WITHOUT Qdrant — "
-              "semantic search is disabled, chat will run on BM25 keyword "
-              "search only until Qdrant is reachable.")
+    if chunk_embeddings is None:
+        print("[WARNING] Retrieval system initialized WITHOUT semantic search — "
+              "chat will run on BM25 keyword search only until embeddings are generated.")
     else:
+        print(f"[INFO] Loaded {chunk_embeddings.shape[0]} chunk embeddings "
+              f"(dim={chunk_embeddings.shape[1]}).")
         print("[INFO] Retrieval system initialized successfully.")
-
-
-# CHANGED: removed `get_ollama_client()` entirely — it's not imported or
-# called anywhere anymore (chatbot.py dropped this import earlier when we
-# moved off Ollama), so keeping it around was dead code.
 
 
 def semantic_search(query, top_k=20):
     if embedding_model is None:
         initialize_retrieval()
 
-    if qdrant is None:
-        # Qdrant failed to connect during initialize_retrieval() (bad
-        # QDRANT_URL/QDRANT_API_KEY, network issue, etc). Don't crash the
-        # whole chat turn over it — skip the embedding call (no point
-        # encoding a query with nowhere to send it) and let hybrid_search()
-        # fall back to BM25-only results. This was previously silent: the
-        # connection failure was logged once at startup/first-init and then
-        # every subsequent call blew up with AttributeError on
-        # `qdrant.query_points`. Now every degraded call logs so it's
-        # obvious in the server logs, not just discovered via a stack trace.
-        print("[WARNING] Qdrant is unavailable — skipping semantic search, using BM25 only")
+    if chunk_embeddings is None:
+        print("[WARNING] No chunk embeddings loaded — skipping semantic search, using BM25 only")
         return []
 
-    query_embedding = embedding_model.encode(query, normalize_embeddings=True).tolist()
+    query_embedding = embedding_model.encode(query, normalize_embeddings=True).astype("float32")
 
-    # FIXED: Modern way to query with named vector
-    results = qdrant.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_embedding,                    # Pass raw vector instead of NamedVector
-        using=VECTOR_NAME,                        # Specify vector name with 'using'
-        limit=top_k,
-        with_payload=True,
-    ).points
+    # CHANGED: cosine similarity via dot product against the local matrix.
+    # Both sides are L2-normalized (normalize_embeddings=True on both the
+    # query here and the chunks in embed_chunks.py), so dot product is
+    # exactly equivalent to cosine similarity — this replaces the old
+    # `qdrant.query_points(...)` call.
+    scores = chunk_embeddings @ query_embedding  # shape (N,)
 
-    return [
-        {
-            "score": point.score,
-            **point.payload,
-        }
-        for point in results
-    ]
+    k = min(top_k, len(scores))
+    top_indices = np.argpartition(-scores, k - 1)[:k]
+    top_indices = top_indices[np.argsort(-scores[top_indices])]
+
+    results = []
+    for idx in top_indices:
+        chunk_id = int(embedding_id_order[idx])
+        chunk = chunk_lookup.get(chunk_id)
+        if chunk is None:
+            continue
+        results.append({"score": float(scores[idx]), **chunk})
+
+    return results
 
 
 def bm25_search(query, top_k=20):
@@ -165,11 +163,14 @@ def hybrid_search(query, top_k=20, semantic_k=20, bm25_k=20, rrf_k=60):
 
     fused_scores = defaultdict(float)
 
+    # FIXED: fuse on "id" (globally unique) instead of "chunk_id" — see the
+    # note in initialize_retrieval() for why "chunk_id" collides across
+    # documents and corrupts this fusion step.
     for rank, result in enumerate(semantic_results):
-        fused_scores[result["chunk_id"]] += 1 / (rrf_k + rank + 1)
+        fused_scores[result["id"]] += 1 / (rrf_k + rank + 1)
 
     for rank, result in enumerate(bm25_results):
-        fused_scores[result["chunk_id"]] += 1 / (rrf_k + rank + 1)
+        fused_scores[result["id"]] += 1 / (rrf_k + rank + 1)
 
     ranked = sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
