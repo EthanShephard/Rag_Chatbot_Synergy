@@ -40,11 +40,20 @@ const Chat = (() => {
             }
             UI.appendChunk(
                 botMessage,
-`# ⚠️ Connection Error
-Synergy AI couldn't generate a response.
-**Reason**
-\`${error.message}\`
-Please try again.`
+`# 🤖 Synergy AI is Currently Learning
+
+Synergy AI is temporarily unavailable while we improve our knowledge base and services.
+
+Please try again in a few minutes.
+
+If your request is urgent, please contact **Synergy Telecom** directly:
+
+Ph: +91-1141316993 
+📱 +91-98186-28354, +91-75038-44034
+🌐 www.rfconnector.in
+🛒 Beta Ecommerce: https://antennix.rfconnector.in
+
+Thank you for your patience.`
             );
             UI.finishMessage(botMessage);
             throw error;
