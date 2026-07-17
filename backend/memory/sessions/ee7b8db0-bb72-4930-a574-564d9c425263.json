@@ -1,0 +1,50 @@
+{
+    "messages": [
+        {
+            "role": "user",
+            "content": "Tell me about RF Connectors."
+        },
+        {
+            "role": "assistant",
+            "content": "I don't have enough verified information to answer that. I'd recommend checking with a Synergy Telecom sales engineer for a definitive answer."
+        },
+        {
+            "role": "user",
+            "content": "Tell me about RF Connectors."
+        },
+        {
+            "role": "assistant",
+            "content": "I don't have enough verified information to answer that. I'd recommend checking with a Synergy Telecom sales engineer for a definitive answer."
+        },
+        {
+            "role": "user",
+            "content": "Tell me about RF Connectors."
+        },
+        {
+            "role": "assistant",
+            "content": "We offer a range of RF connectors, including the **3.5mm Connector** and the **C4 Connector** (available in both male and female versions).\n\nFor full specifications and detailed information on these products, please refer to our product pages:\n\n- 3.5mm Connector: https://www.rfconnector.in/product_showroom/35mm_connector\n- C4 Connector: https://www.rfconnector.in/product_showroom/c4_connector\n\nFor a complete overview of our product line, our full catalog is available at: http://www.rfconnector.in/catalog/Group_Data_Sheet/Full_Line_Catalog.pdf"
+        },
+        {
+            "role": "user",
+            "content": "Tell me about RF Connectors."
+        },
+        {
+            "role": "assistant",
+            "content": "We offer a range of RF connectors, including the **3.5mm Connector** and the **C4 Connector** (available in both male and female versions).\n\nFor full specifications and detailed information, please refer to our product pages:\n\n- 3.5mm Connector: https://www.rfconnector.in/product_showroom/35mm_connector\n- C4 Connector: https://www.rfconnector.in/product_showroom/c4_connector\n\nFor a complete overview of our product line, our full catalog is available at: http://www.rfconnector.in/catalog/Group_Data_Sheet/Full_Line_Catalog.pdf"
+        },
+        {
+            "role": "user",
+            "content": "Tell me about Cable Assemblies."
+        },
+        {
+            "role": "assistant",
+            "content": "We offer a range of cable assemblies, including both customizable and pre-configured options.\n\n**Custom Cable Assembly**\nWe provide a Custom RF Cable Assembly Configurator, allowing you to specify End 1 Connector, Cable, and End 2 Connector to build a solution tailored to your needs. You can access this tool here: https://www.panaceaticsynergy.com/cable-creator\n\n**Pre-Configured Cable Assemblies**\nWe also offer a variety of standard cable assemblies, including:\n- **AISG RET Control Cables** (e.g., AISG Female to DB9 Male, DIN Male to DIN Female, and DIN Male to DIN Female DIN Male splitters)\n- **SMA to SMA Cables** (DC to 18 GHz), available in straight and right-angle configurations and various lengths (0.5 m, 1 m, 2 m, 3 m)\n- **SMA to TNC Cables**\n\nFor a complete listing, please visit our cable assembly page: https://www.rfconnector.in/product_showroom/cable_assembly"
+        }
+    ],
+    "summary": "",
+    "survey": {
+        "active": false,
+        "current": null,
+        "answers": {}
+    }
+}

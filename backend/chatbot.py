@@ -222,7 +222,12 @@ Content:
 
     assistant_response = ""
     first = True
-
+    print("\n========== RETRIEVED CHUNKS ==========")
+    for r in results:
+        print(f"[{r.get('category')}] {r.get('url')}  (rrf_score={r.get('rrf_score'):.4f})")
+        print(r["text"][:150].replace("\n", " "))
+        print("---")
+    print("=======================================\n")
     # CHANGED: OpenAI-style streaming instead of Anthropic's
     # `client.messages.stream(...)` context manager. Also disabled thinking
     # mode here — for a RAG answer grounded in retrieved context, you want
