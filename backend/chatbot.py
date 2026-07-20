@@ -10,7 +10,7 @@ import os
 from openai import OpenAI
 
 from backend.retrieval import (
-    hybrid_search,
+    keyword_scoped_search,
     initialize_retrieval,
 )
 
@@ -36,7 +36,6 @@ client = OpenAI(
 # the main answer and the rewrite step — there's no separate "mini" tier
 # below Flash the way Haiku sits below Sonnet on Anthropic.
 MAIN_MODEL = "deepseek-v4-flash"
-REWRITE_MODEL = "deepseek-v4-flash"
 
 MAX_TOKENS = 4096
 TEMPERATURE = 0.7
@@ -87,89 +86,6 @@ Question:
     return messages
 
 
-def rewrite_question(question, history, summary):
-    if not history:
-        return question
-
-    history = history[-6:]
-
-    conversation = "\n".join(
-        f"{msg['role'].capitalize()}: {msg['content']}"
-        for msg in history
-    )
-
-    prompt = f"""
-You are a conversational query rewriter for a Retrieval-Augmented Generation (RAG) system.
-
-Your ONLY task is to rewrite the latest user message into a complete standalone search query.
-
-IMPORTANT:
-If the latest user message is already a complete standalone question, return it EXACTLY as written.
-Do NOT paraphrase. Do NOT improve wording. Do NOT replace product names.
-
-Conversation Summary:
-{summary}
-
-Recent Conversation:
-{conversation}
-
-Latest User Question:
-{question}
-"""
-
-    try:
-        # CHANGED: OpenAI-style call — `client.chat.completions.create(...)`
-        # instead of `client.messages.create(...)`. Also disabled DeepSeek's
-        # "thinking" mode: it's on by default for V4 models, and thinking
-        # tokens bill at the output rate even though you never see them.
-        # A query rewrite is a simple, non-reasoning task, so this avoids
-        # paying for hidden reasoning tokens on every follow-up question.
-        response = client.chat.completions.create(
-            model=REWRITE_MODEL,
-            max_tokens=256,
-            temperature=0,
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            extra_body={"thinking": {"type": "disabled"}},
-        )
-        rewritten = response.choices[0].message.content.strip()
-
-        print("\n========== QUERY REWRITER ==========")
-        print("Original :", question)
-        print("Rewritten:", rewritten)
-        print("====================================\n")
-
-        return rewritten if rewritten else question
-    except Exception as e:
-        print(f"[WARNING] Query rewrite failed: {e}")
-        return question
-
-
-PRONOUNS = {"it", "its", "it's", "they", "them", "their", "this", "that",
-            "these", "those", "he", "she", "his", "her", "former", "latter",
-            "previous", "above"}
-
-FOLLOWUP_STARTERS = ("what about", "how about", "and", "also", "what if",
-                     "can it", "does it", "is it", "are they", "tell me more",
-                     "explain more", "continue")
-
-
-def should_rewrite(question: str, history: list) -> bool:
-    if not history:
-        return False
-
-    q = question.lower().strip()
-    if any(q.startswith(p) for p in FOLLOWUP_STARTERS):
-        return True
-
-    words = set(re.findall(r"\w+", q))
-    if words & PRONOUNS:
-        return True
-
-    return False
-
-
 def ask(question, session_id):
     total = time.perf_counter()
 
@@ -181,17 +97,16 @@ def ask(question, session_id):
     summary = load_summary(session_id)
     print(f"[TIME] Memory: {time.perf_counter()-t:.3f}s")
 
-    # Query Rewrite
+    # Retrieval — keyword-scoped search instead of an LLM rewrite step.
+    # Recent user turns are pulled in directly as extra keyword context, so
+    # a vague follow-up like "show me just the cables" inherits the topic
+    # scope (e.g. "RF", "coaxial") established earlier in the conversation,
+    # without needing a separate model call to guess a standalone query.
     t = time.perf_counter()
-    if should_rewrite(question, history):
-        rewritten_question = rewrite_question(question, history, summary)
-    else:
-        rewritten_question = question
-    print(f"[TIME] Rewrite: {time.perf_counter()-t:.3f}s")
-
-    # Retrieval
-    t = time.perf_counter()
-    results = hybrid_search(rewritten_question, top_k=15)
+    recent_user_turns = " ".join(
+        msg["content"] for msg in history[-6:] if msg.get("role") == "user"
+    )
+    results = keyword_scoped_search(question, history_text=recent_user_turns, top_k=15)
     print(f"[TIME] Retrieval: {time.perf_counter()-t:.3f}s")
 
     # Build prompt
@@ -208,13 +123,13 @@ Content:
     # CHANGED: build_messages now returns one combined `messages` list
     # (system message included) instead of (system_text, messages).
     messages = build_messages(
-        rewritten_question, context, history, summary
+        question, context, history, summary
     )
     print(f"[TIME] Prompt Build: {time.perf_counter()-t:.3f}s")
 
     print("\n==============================")
-    print("Original :", question)
-    print("Search   :", rewritten_question)
+    print("Question :", question)
+    print("Keywords used for retrieval scope:", recent_user_turns[:200])
     print("==============================")
 
     # ========================== DEEPSEEK STREAMING ==========================
