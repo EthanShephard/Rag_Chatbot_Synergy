@@ -206,6 +206,34 @@ def convert_bare_usd_rows(text, rate=USD_TO_INR_RATE):
     return BARE_USD_ROW_PATTERN.sub(replacer, text)
 
 
+# ==================================================
+# Email scrubbing
+#
+# Chunk data (1,221 chunks) contains various email addresses picked up
+# from scraped pages — staff personal emails, partner/competitor support
+# addresses, etc. Only one email should ever reach a customer: the
+# official contact address. Relying on the prompt alone to avoid
+# reproducing whichever email happens to appear in context proved
+# unreliable (same lesson as the price disclaimer and bare-USD prices),
+# so every email in retrieved text is scrubbed here except the official
+# one, before the model ever sees it.
+# ==================================================
+
+OFFICIAL_EMAIL = "info@rfconnector.in"
+
+EMAIL_PATTERN = re.compile(r"[\w.\-]+@[\w.\-]+\.\w+")
+
+
+def scrub_other_emails(text):
+    def replacer(m):
+        found = m.group()
+        if found.lower() == OFFICIAL_EMAIL:
+            return found
+        return "[contact removed — use official Synergy contact info]"
+
+    return EMAIL_PATTERN.sub(replacer, text)
+
+
 def bm25_search(query, top_k=20):
     if bm25 is None:
         initialize_retrieval()
