@@ -191,7 +191,7 @@ def ask(question, session_id):
 
     # Retrieval
     t = time.perf_counter()
-    results = hybrid_search(rewritten_question, top_k=5)
+    results = hybrid_search(rewritten_question, top_k=15)
     print(f"[TIME] Retrieval: {time.perf_counter()-t:.3f}s")
 
     # Build prompt
