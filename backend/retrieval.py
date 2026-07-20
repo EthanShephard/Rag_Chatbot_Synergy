@@ -20,22 +20,16 @@ torch.set_num_threads(1)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "database"
+CHUNKS = DATA_DIR / "chunks.json"
+EMBEDDINGS = DATA_DIR / "chunk_embeddings.npy"
+EMBEDDING_IDS = DATA_DIR / "chunk_ids.npy"
 
-# CHANGED: append-friendly storage. A JSON array (chunks.json) and a
-# single .npy file (chunk_embeddings.npy) both have to be fully rewritten
-# to add data — a JSON array's closing bracket has to move, and a .npy
-# file's header describes the array shape. Neither supports true append.
-# chunks.jsonl (one JSON object per line) and sharded embedding files DO:
-# a new sync run just writes a new line / new shard file, touching zero
-# bytes of existing data. Legacy single-file paths are kept as a fallback
-# so an existing production chunks.json / chunk_embeddings.npy still
-# loads correctly until sync_website.py performs the one-time migration.
-CHUNKS_JSONL = DATA_DIR / "chunks.jsonl"
-CHUNKS = DATA_DIR / "chunks.json"  # legacy fallback
-
-EMBEDDING_SHARDS_DIR = DATA_DIR / "embedding_shards"
-EMBEDDINGS = DATA_DIR / "chunk_embeddings.npy"      # legacy fallback
-EMBEDDING_IDS = DATA_DIR / "chunk_ids.npy"          # legacy fallback
+# CHANGED: joblib cache for the BM25 index build. Tokenizing ~9k chunks and
+# building BM25Okapi is real CPU work that otherwise reruns on every cold
+# start. Cached here alongside the parsed chunks list + id lookup, since
+# all three are cheap to keep together and expensive to rebuild.
+# Invalidated automatically if chunks.json changes (mtime check).
+BM25_CACHE = DATA_DIR / "bm25_cache.joblib"
 
 # CHANGED: joblib cache for the BM25 index build. Tokenizing ~9k chunks and
 # building BM25Okapi is real CPU work that otherwise reruns on every cold
@@ -60,64 +54,18 @@ embedding_id_order = None  # (N,) int64 — chunk_embeddings[i] belongs to chunk
 
 def load_chunks():
     try:
-        if CHUNKS_JSONL.exists():
-            data = []
-            with open(CHUNKS_JSONL, "r", encoding="utf-8") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        data.append(json.loads(line))
-                    except json.JSONDecodeError as e:
-                        print(f"[WARNING] Skipping malformed line {line_num} in "
-                              f"{CHUNKS_JSONL.name}: {e}")
-            print(f"[INFO] Loaded {len(data)} chunks from {CHUNKS_JSONL.name}")
+        if not CHUNKS.exists():
+            raise FileNotFoundError(f"chunks.json not found at: {CHUNKS}")
+        with open(CHUNKS, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            print(f"[INFO] Loaded {len(data)} chunks")
             return data
-
-        if CHUNKS.exists():
-            print(f"[INFO] {CHUNKS_JSONL.name} not found — loading legacy "
-                  f"{CHUNKS.name} instead. Run sync_website.py to migrate.")
-            with open(CHUNKS, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                print(f"[INFO] Loaded {len(data)} chunks from {CHUNKS.name}")
-                return data
-
-        raise FileNotFoundError(
-            f"Neither {CHUNKS_JSONL} nor {CHUNKS} exists."
-        )
     except Exception as e:
         print(f"[ERROR] Failed to load chunks: {e}")
         raise
 
 
 def load_chunk_embeddings():
-    if EMBEDDING_SHARDS_DIR.exists():
-        shard_files = sorted(EMBEDDING_SHARDS_DIR.glob("*.npz"))
-        if not shard_files:
-            print(f"[WARNING] {EMBEDDING_SHARDS_DIR.name} exists but has no shards — "
-                  f"semantic search will be disabled.")
-            return None, None
-
-        all_embeddings, all_ids = [], []
-        for shard_path in shard_files:
-            try:
-                with np.load(shard_path) as shard:
-                    all_embeddings.append(shard["embeddings"])
-                    all_ids.append(shard["chunk_ids"])
-            except Exception as e:
-                print(f"[WARNING] Failed to load shard {shard_path.name}, skipping: {e}")
-
-        if not all_embeddings:
-            return None, None
-
-        embeddings = np.concatenate(all_embeddings, axis=0)
-        ids = np.concatenate(all_ids, axis=0)
-        print(f"[INFO] Loaded {embeddings.shape[0]} embeddings from "
-              f"{len(shard_files)} shard(s).")
-        return embeddings, ids
-
-    # Legacy fallback — single-file format, pre-migration.
     if not EMBEDDINGS.exists() or not EMBEDDING_IDS.exists():
         print(f"[WARNING] Precomputed embeddings not found at {EMBEDDINGS} — "
               f"run `python -m backend.database.embed_chunks` first. "
@@ -183,20 +131,15 @@ def initialize_retrieval():
 
 def _load_from_cache():
     """Load {chunks, chunk_lookup, bm25} from the joblib cache if it exists
-    and is not stale (i.e. the active chunks source hasn't been modified
-    since the cache was built). Returns True on success, False if a
-    rebuild is needed."""
+    and is not stale (i.e. chunks.json hasn't been modified since the cache
+    was built). Returns True on success, False if a rebuild is needed."""
     global chunks, chunk_lookup, bm25
 
-    # Compare against whichever source file is actually being read —
-    # chunks.jsonl once migrated, otherwise the legacy chunks.json.
-    active_source = CHUNKS_JSONL if CHUNKS_JSONL.exists() else CHUNKS
-
-    if not BM25_CACHE.exists() or not active_source.exists():
+    if not BM25_CACHE.exists() or not CHUNKS.exists():
         return False
 
-    if BM25_CACHE.stat().st_mtime < active_source.stat().st_mtime:
-        print(f"[INFO] {active_source.name} is newer than the BM25 cache — rebuilding.")
+    if BM25_CACHE.stat().st_mtime < CHUNKS.stat().st_mtime:
+        print("[INFO] chunks.json is newer than the BM25 cache — rebuilding.")
         return False
 
     try:
