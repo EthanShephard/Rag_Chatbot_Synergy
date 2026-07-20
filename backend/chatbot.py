@@ -100,15 +100,28 @@ def ask(question, session_id):
     print(f"[TIME] Memory: {time.perf_counter()-t:.3f}s")
 
     # Retrieval — keyword-scoped search instead of an LLM rewrite step.
-    # Recent user turns are pulled in directly as extra keyword context, so
-    # a vague follow-up like "show me just the cables" inherits the topic
-    # scope (e.g. "RF", "coaxial") established earlier in the conversation,
-    # without needing a separate model call to guess a standalone query.
+    # Recent conversation is pulled in directly as extra keyword context, so
+    # a vague follow-up like "show me just the cables" or "what are the
+    # prices" inherits the topic scope established earlier — including the
+    # SPECIFIC products the assistant itself surfaced last turn, not just
+    # whatever the user happened to retype. Relying on user turns alone
+    # loses that: if the assistant answered with "SMB, SMC, Low PIM 7/16
+    # DIN..." and the user just says "what are the prices," those specific
+    # product names need to come from the assistant's last reply, since
+    # the user never said them.
     t = time.perf_counter()
+    last_assistant_reply = next(
+        (msg["content"] for msg in reversed(history) if msg.get("role") == "assistant"),
+        "",
+    )
     recent_user_turns = " ".join(
         msg["content"] for msg in history[-6:] if msg.get("role") == "user"
     )
-    results = keyword_scoped_search(question, history_text=recent_user_turns, top_k=15)
+    # Order matters for the cascading filter: the current question comes
+    # first (inside keyword_scoped_search itself), then the last answer's
+    # established topic, then broader recent user intent.
+    history_text = f"{last_assistant_reply} {recent_user_turns}"
+    results = keyword_scoped_search(question, history_text=history_text, top_k=15)
     print(f"[TIME] Retrieval: {time.perf_counter()-t:.3f}s")
 
     # Build prompt
@@ -131,8 +144,8 @@ Content:
 
     print("\n==============================")
     print("Question :", question)
-    print("Recent history text:", recent_user_turns[:200])
-    print("Actual keywords used:", extract_keywords(f"{question} {recent_user_turns}"))
+    print("Last assistant reply (used for scope):", last_assistant_reply[:200])
+    print("Actual keywords used:", extract_keywords(f"{question} {history_text}"))
     print("==============================")
 
     # ========================== DEEPSEEK STREAMING ==========================
