@@ -20,7 +20,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # and Flash is DeepSeek's small, cheap tier.
 DRAFT_MODEL = "deepseek-v4-flash"
 
-SALES_EMAIL = "sales@synergytpl.com"
+SALES_EMAIL = "info@rfconnector.in"
 
 LEADS_FILE = Path(__file__).resolve().parent / "database" / "leads.jsonl"
 LEADS_FILE.parent.mkdir(parents=True, exist_ok=True)

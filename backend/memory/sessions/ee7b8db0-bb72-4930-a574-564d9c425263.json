@@ -2,7 +2,23 @@
     "messages": [
         {
             "role": "user",
-            "content": "Tell me about RF Connectors."
+            "content": "hi"
+        },
+        {
+            "role": "assistant",
+            "content": "Hi! Welcome to Synergy Telecom. How can I help you today? Are you looking for information on our RF connectors, cable assemblies, attenuators, or any other product?"
+        },
+        {
+            "role": "user",
+            "content": "what products do you offer??"
+        },
+        {
+            "role": "assistant",
+            "content": "We offer a broad portfolio of RF and telecom infrastructure products. Here's an overview of what we manufacture:\n\n**RF Connectors** — Including 4.3-10, 7/16 DIN, N-Type, SMA, SMB, BNC, TNC, 2.92mm, 2.4mm, and other industry-standard connector families.\n\n**Cable Assemblies** — RF jumper cables, low PIM assemblies, test port cables, and custom cable assemblies for various applications.\n\n**Antennas** — Indoor omni, ceiling mount, panel, and wall mount antennas for DAS and IBS deployments.\n\n**Filters** — Low pass filters, cavity filters, and other frequency-selective components.\n\n**Passive RF Components** — Power dividers, directional couplers, hybrid couplers, RF combiners, splitters, attenuators, terminations, and dummy loads.\n\n**Weatherproofing Kits** — Sealing solutions for outdoor connectors, cable joints, and antenna interfaces.\n\n**Indoor Building Solution (IBS) Materials** — Complete passive infrastructure for indoor wireless coverage, including cables, connectors, adapters, and mounting hardware.\n\n**Lightning Protection & Grounding Accessories** — Surge protectors, grounding kits, and feeder clamps.\n\n**Microwave Components & Waveguide Products** — For satellite, radar, and microwave communication systems.\n\nWe also offer OEM manufacturing services for custom requirements across all these categories. For detailed specifications on any product line, let me know what you're interested in."
+        },
+        {
+            "role": "user",
+            "content": "what about masts?"
         },
         {
             "role": "assistant",
@@ -10,41 +26,22 @@
         },
         {
             "role": "user",
-            "content": "Tell me about RF Connectors."
+            "content": "telescopic masts"
         },
         {
             "role": "assistant",
-            "content": "I don't have enough verified information to answer that. I'd recommend checking with a Synergy Telecom sales engineer for a definitive answer."
-        },
-        {
-            "role": "user",
-            "content": "Tell me about RF Connectors."
-        },
-        {
-            "role": "assistant",
-            "content": "We offer a range of RF connectors, including the **3.5mm Connector** and the **C4 Connector** (available in both male and female versions).\n\nFor full specifications and detailed information on these products, please refer to our product pages:\n\n- 3.5mm Connector: https://www.rfconnector.in/product_showroom/35mm_connector\n- C4 Connector: https://www.rfconnector.in/product_showroom/c4_connector\n\nFor a complete overview of our product line, our full catalog is available at: http://www.rfconnector.in/catalog/Group_Data_Sheet/Full_Line_Catalog.pdf"
-        },
-        {
-            "role": "user",
-            "content": "Tell me about RF Connectors."
-        },
-        {
-            "role": "assistant",
-            "content": "We offer a range of RF connectors, including the **3.5mm Connector** and the **C4 Connector** (available in both male and female versions).\n\nFor full specifications and detailed information, please refer to our product pages:\n\n- 3.5mm Connector: https://www.rfconnector.in/product_showroom/35mm_connector\n- C4 Connector: https://www.rfconnector.in/product_showroom/c4_connector\n\nFor a complete overview of our product line, our full catalog is available at: http://www.rfconnector.in/catalog/Group_Data_Sheet/Full_Line_Catalog.pdf"
-        },
-        {
-            "role": "user",
-            "content": "Tell me about Cable Assemblies."
-        },
-        {
-            "role": "assistant",
-            "content": "We offer a range of cable assemblies, including both customizable and pre-configured options.\n\n**Custom Cable Assembly**\nWe provide a Custom RF Cable Assembly Configurator, allowing you to specify End 1 Connector, Cable, and End 2 Connector to build a solution tailored to your needs. You can access this tool here: https://www.panaceaticsynergy.com/cable-creator\n\n**Pre-Configured Cable Assemblies**\nWe also offer a variety of standard cable assemblies, including:\n- **AISG RET Control Cables** (e.g., AISG Female to DB9 Male, DIN Male to DIN Female, and DIN Male to DIN Female DIN Male splitters)\n- **SMA to SMA Cables** (DC to 18 GHz), available in straight and right-angle configurations and various lengths (0.5 m, 1 m, 2 m, 3 m)\n- **SMA to TNC Cables**\n\nFor a complete listing, please visit our cable assembly page: https://www.rfconnector.in/product_showroom/cable_assembly"
+            "content": "We offer a comprehensive range of pneumatic telescopic masts for antenna, broadcasting, telecom, surveillance, and lighting applications. Our masts come in both **locking** and **non-locking** collar designs, with extended heights from **2.7m up to 30m** and payload ratings from **15kg up to 300kg**.\n\nHere's a summary of the main categories:\n\n**Locking Telescopic Masts** — For applications requiring secure height retention at each section. Examples include:\n- 6m locking mast with tripod (100 kg payload)\n- 15m locking mast (30 kg, 50 kg, 100 kg, 150 kg, and 300 kg payload variants)\n- 18m locking mast (15 kg up to 230 kg payloads)\n- 21m locking mast (30 kg, 50 kg, 70 kg, 100 kg, 150 kg payloads)\n- 25m locking mast (30 kg, 50 kg, 70 kg, 100 kg head loads)\n- 30m / 100 ft lockable pneumatic telescopic mast\n\n**Non-Locking Telescopic Masts** — Pneumatic masts with continuous extension. Examples include:\n- 5.5m pneumatic mast (100 kg payload)\n- 15m telescopic mast (30 kg, 50 kg, 70 kg, 100 kg payloads)\n- 30m telescopic mast\n\n**Lighting Telescopic Masts** — Dedicated masts for LED and halogen lighting towers, ranging from 3.2m to 15m, including portable, vehicle-mounted, and golf course lighting masts.\n\n**CCTV Masts** — Lockable and non-lockable masts from 2.2m to 9m for IP cameras and security surveillance.\n\n**Specialty Systems** — Mobile telecom trailer-mounted mast systems (15m–21m), move-light vehicle roof-mount towers (up to 4000W), solar LED lighting towers, and fire-fighting truck-mounted lighting towers.\n\n**Accessories** — Air compressors, pan-and-tilt control systems, guying ropes (4-layer with 4-way kits), trailer jacks, ground-mounting tripods, and LED flood lights (50W–150W).\n\nFor example, the **18m Telecom Tower Mast** (item code ST-80111180) is a non-locking pneumatic mast with 11 sections, retracted height of 2.8m, 30 kg maximum head load, and weighs approximately 170 kg. It includes 4-layer guying kits and is suitable for microwave antennas, radio communication, surveillance cameras, sensors, and weather stations.\n\nMore details and product pages are available at:\nhttps://www.panaceaticsynergy.com/product/telescopic-mast\nhttps://www.rfconnector.in/product_showroom/telescopic_mast"
         }
     ],
-    "summary": "",
+    "summary": "The user inquired about RF connectors and cable assemblies. The assistant explained RF connectors as electromechanical components for coaxial cables, listing categories including 4.3-10, 7/16 DIN, N-Type, SMA, BNC, TNC, and others, with price lists available for specific types. For cable assemblies, the assistant described them as complete interconnection solutions with various types (e.g., RF Jumper Cables, Low PIM Assemblies, Test Cables) and connector options. Pricing for cable assemblies is estimate-based and requires contacting sales for confirmed quotes. The user specified a need for a 6 GHz, 50 Ω cable. The assistant provided specific models: Standard Armored Test Port Cables (e.g., 15NN50-1.5C, 15NN50-3.0C, 15NNF50-1.5C) and Armored with Reinforced Grip options (e.g., 15RNFN50-1.5-R, 15RDFN50-1.5-R), all with N-type or 7/16 DIN connectors. The user repeatedly asked for prices, and the assistant provided estimated INR conversions for various connectors and cable assemblies (e.g., Low PIM Type N connectors at ₹959, 7/16 DIN at ₹2,887, test cables from ₹7,939 to ₹71,818), emphasizing these are not quotable and directing the user to contact sales (pradeep@rfconnector.in or +91-7217885948) for confirmed quotes. The user also asked about RF coaxial cables, and the assistant described families (RG58, LMR, semi-rigid, etc.), impedance options (50 Ω and 75 Ω), and applications. The user then asked about attenuators; the assistant explained them as passive RF components that reduce signal power and listed models: 2.92mm fixed attenuators (PE7024-",
     "survey": {
         "active": false,
-        "current": null,
-        "answers": {}
+        "current": "email",
+        "answers": {
+            "product": "RF Connectors",
+            "subcategory": "N-Type",
+            "quantity": 6,
+            "email": "abc@mail.com"
+        }
     }
 }

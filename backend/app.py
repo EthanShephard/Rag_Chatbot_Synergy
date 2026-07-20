@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from pathlib import Path
 import uuid
 
 from backend.chatbot import ask
@@ -133,7 +135,7 @@ async def register(customer: CustomerRegistration):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail="Internal server error: "
+            detail=(f"Internal server error:{e}")
         )
 
 
@@ -214,3 +216,18 @@ async def chat(request: ChatRequest):
             status_code=500,
             detail=str(e)
         )
+
+
+# CHANGED: serve the frontend from FastAPI itself, mounted at /app, so
+# frontend and backend are same-origin. This matters specifically for
+# GitHub Codespaces: each forwarded port gets its OWN separate public URL
+# (e.g. https://name-8000.app.github.dev), so a frontend served any other
+# way would need to know the backend's exact forwarded URL to reach it.
+# Same-origin sidesteps that entirely — frontend/js/api.js's existing
+# `BASE_URL = ""` fallback for non-localhost hosts already assumes
+# same-origin, so no frontend changes are needed, just this mount.
+# Mounted at /app rather than "/" so it doesn't shadow the existing JSON
+# health-check route above at the bare "/" path. html=True serves
+# index.html automatically at /app/.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/app", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
