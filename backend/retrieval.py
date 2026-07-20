@@ -165,6 +165,47 @@ def scrub_price_disclaimer(text):
     )
 
 
+# ==================================================
+# Bare-USD price row conversion
+#
+# In this catalogue's pricing tables, some rows already have an INR
+# conversion baked in (e.g. "PE321-24 24\" ₹76,638 (est.)"), but sibling
+# rows in the SAME table were left as bare decimal numbers with no
+# currency marker at all (e.g. "PE321-36 36\" 935.00 869.55 804.10").
+# There's nothing in that text to flag it as USD, so asking the model to
+# reliably notice and convert it turn was inconsistent. Since the row
+# structure itself is very regular (model number, length in inches, three
+# quantity-break prices), it's converted here in code — fixed rate,
+# applied consistently, before the model ever sees a bare number.
+# ==================================================
+
+USD_TO_INR_RATE = 95
+
+BARE_USD_ROW_PATTERN = re.compile(
+    r'([A-Z]{2}\d[\w\-]*)\s+(\d+)"\s+'
+    r'(\d[\d,]*\.\d{2})\s+(\d[\d,]*\.\d{2})\s+(\d[\d,]*\.\d{2})'
+)
+
+
+def _convert_usd_to_inr_str(usd_str, rate=USD_TO_INR_RATE):
+    usd = float(usd_str.replace(",", ""))
+    inr = round(usd * rate)
+    return f"₹{inr:,} (est.)"
+
+
+def convert_bare_usd_rows(text, rate=USD_TO_INR_RATE):
+    def replacer(m):
+        model, length, p1, p2, p3 = m.groups()
+        return (
+            f'{model} {length}" '
+            f"{_convert_usd_to_inr_str(p1, rate)} "
+            f"{_convert_usd_to_inr_str(p2, rate)} "
+            f"{_convert_usd_to_inr_str(p3, rate)}"
+        )
+
+    return BARE_USD_ROW_PATTERN.sub(replacer, text)
+
+
 def bm25_search(query, top_k=20):
     if bm25 is None:
         initialize_retrieval()
