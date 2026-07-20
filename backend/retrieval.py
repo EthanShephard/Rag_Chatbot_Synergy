@@ -154,6 +154,114 @@ def bm25_search(query, top_k=20):
     ]
 
 
+# ==================================================
+# Cascading keyword-scoped search
+#
+# Replaces the LLM-based query-rewrite step for follow-up questions.
+# Instead of asking a model to guess a standalone query, this pulls
+# keywords straight from the current message + recent conversation
+# turns and applies them as a progressive AND-filter over chunks.json
+# BEFORE ranking — so a vague follow-up like "show me just the cables"
+# inherits the topic scope ("RF", "coaxial") established earlier in the
+# conversation, instead of matching "cable" against the whole catalogue
+# (including unrelated things like Solar Cables).
+# ==================================================
+
+STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "do", "does", "did", "have", "has", "had", "i", "you", "we", "they",
+    "it", "he", "she", "this", "that", "these", "those", "and", "or",
+    "but", "if", "of", "at", "by", "for", "with", "about", "to", "from",
+    "in", "on", "just", "only", "please", "show", "me", "give", "tell",
+    "want", "need", "looking", "for", "your", "our", "my", "what", "which",
+    "who", "how", "any", "some", "sell", "offer", "offers", "have",
+    "available", "product", "products", "list", "please", "can", "could",
+}
+
+# Technical spec patterns (e.g. "50 ohm", "6 ghz", "12 mm") are the most
+# discriminating tokens a person can give — pull them out as their own
+# keyword phrases so they don't get shredded by generic tokenization.
+TECH_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)?\s?"
+    r"(?:ghz|mhz|khz|hz|ohm|ohms|db|dbi|dbm|mm|cm|inch|in|kg|w|watt|watts|"
+    r"v|volt|volts|amp|amps|a)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_keywords(text):
+    """Pull ordered, deduped keyword candidates out of free text — technical
+    spec phrases first (most discriminating), then remaining content words,
+    with stopwords and short filler words removed."""
+    text_l = text.lower()
+
+    tech_terms = [m.group().strip() for m in TECH_PATTERN.finditer(text_l)]
+    remaining = TECH_PATTERN.sub(" ", text_l)
+
+    words = re.findall(r"[a-z0-9][a-z0-9\-]*", remaining)
+    content_words = [w for w in words if w not in STOPWORDS and len(w) > 2]
+
+    seen = set()
+    ordered = []
+    for w in tech_terms + content_words:
+        if w not in seen:
+            seen.add(w)
+            ordered.append(w)
+    return ordered
+
+
+def cascading_keyword_filter(keywords, min_results=6):
+    """Progressively AND-filter chunks by keyword. If applying the next
+    keyword would narrow the candidate set below min_results, that keyword
+    is skipped (treated as over-specific / not present) rather than
+    zeroing out the results."""
+    if chunks is None:
+        initialize_retrieval()
+
+    candidate_idx = list(range(len(chunks)))
+
+    for kw in keywords:
+        filtered = [i for i in candidate_idx if kw in chunks[i]["text"].lower()]
+
+        if len(filtered) == 0:
+            continue  # keyword not present anywhere in current scope — skip it
+
+        if len(filtered) < min_results and len(candidate_idx) >= min_results:
+            continue  # would over-narrow — keep current broader scope instead
+
+        candidate_idx = filtered
+
+    return candidate_idx
+
+
+def keyword_scoped_search(query, history_text="", top_k=15, min_results=6):
+    """Main entry point: scope by cascading keywords (current message +
+    recent history), then rank the narrowed candidate set by BM25
+    relevance. Falls back to the full hybrid_search if no usable keywords
+    are found or nothing in the catalogue matches any of them at all."""
+    if chunks is None:
+        initialize_retrieval()
+
+    combined_text = f"{query} {history_text}".strip()
+    keywords = extract_keywords(combined_text)
+
+    if not keywords:
+        return hybrid_search(query, top_k=top_k)
+
+    candidate_idx = cascading_keyword_filter(keywords, min_results=min_results)
+
+    if not candidate_idx:
+        return hybrid_search(query, top_k=top_k)
+
+    def tokenize(text):
+        return re.findall(r"[A-Za-z0-9._-]+", text.lower())
+
+    scores = bm25.get_scores(tokenize(query))
+    ranked = sorted(candidate_idx, key=lambda i: -scores[i])[:top_k]
+
+    return [{"score": float(scores[i]), **chunks[i]} for i in ranked]
+
+
 def hybrid_search(query, top_k=20, semantic_k=20, bm25_k=20, rrf_k=60):
     if chunks is None:
         initialize_retrieval()
