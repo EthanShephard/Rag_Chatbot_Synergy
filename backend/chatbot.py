@@ -11,6 +11,7 @@ from openai import OpenAI
 
 from backend.retrieval import (
     keyword_scoped_search,
+    extract_keywords,
     initialize_retrieval,
 )
 
@@ -129,7 +130,8 @@ Content:
 
     print("\n==============================")
     print("Question :", question)
-    print("Keywords used for retrieval scope:", recent_user_turns[:200])
+    print("Recent history text:", recent_user_turns[:200])
+    print("Actual keywords used:", extract_keywords(f"{question} {recent_user_turns}"))
     print("==============================")
 
     # ========================== DEEPSEEK STREAMING ==========================
@@ -139,7 +141,9 @@ Content:
     first = True
     print("\n========== RETRIEVED CHUNKS ==========")
     for r in results:
-        print(f"[{r.get('category')}] {r.get('url')}  (rrf_score={r.get('rrf_score'):.4f})")
+        score = r.get('score', r.get('rrf_score'))
+        score_str = f"{score:.4f}" if score is not None else "n/a"
+        print(f"[{r.get('category')}] {r.get('url')}  (score={score_str})")
         print(r["text"][:150].replace("\n", " "))
         print("---")
     print("=======================================\n")
