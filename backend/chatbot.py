@@ -12,6 +12,7 @@ from openai import OpenAI
 from backend.retrieval import (
     keyword_scoped_search,
     extract_keywords,
+    scrub_price_disclaimer,
     initialize_retrieval,
 )
 
@@ -117,7 +118,7 @@ def ask(question, session_id):
 Page: {c.get('page', '')}
 
 Content:
-{c['text']}"""
+{scrub_price_disclaimer(c['text'])}"""
         for c in results
     )
 
