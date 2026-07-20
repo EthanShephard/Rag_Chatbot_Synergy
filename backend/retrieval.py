@@ -46,15 +46,6 @@ EMBEDDING_IDS = DATA_DIR / "chunk_ids.npy"          # legacy fallback
 # sync_website.py run updates the data.
 BM25_CACHE = DATA_DIR / "bm25_cache.joblib"
 
-# CHANGED: joblib cache for the BM25 index build. Tokenizing ~9k chunks and
-# building BM25Okapi is real CPU work that otherwise reruns on every cold
-# start (e.g. every time a Codespaces container spins up). Cached here
-# alongside the parsed chunks list + id lookup, since all three are cheap
-# to keep together and expensive to rebuild. Invalidated automatically if
-# chunks.json changes (mtime check) — no stale cache risk after a future
-# sync_website.py run updates the data.
-BM25_CACHE = DATA_DIR / "bm25_cache.joblib"
-
 # Must match the model name used in embed_chunks.py.
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 
@@ -192,17 +183,6 @@ def initialize_retrieval():
 
 def _load_from_cache():
     """Load {chunks, chunk_lookup, bm25} from the joblib cache if it exists
-<<<<<<< HEAD
-    and is not stale (i.e. chunks.json hasn't been modified since the cache
-    was built). Returns True on success, False if a rebuild is needed."""
-    global chunks, chunk_lookup, bm25
-
-    if not BM25_CACHE.exists() or not CHUNKS.exists():
-        return False
-
-    if BM25_CACHE.stat().st_mtime < CHUNKS.stat().st_mtime:
-        print("[INFO] chunks.json is newer than the BM25 cache — rebuilding.")
-=======
     and is not stale (i.e. the active chunks source hasn't been modified
     since the cache was built). Returns True on success, False if a
     rebuild is needed."""
@@ -217,7 +197,6 @@ def _load_from_cache():
 
     if BM25_CACHE.stat().st_mtime < active_source.stat().st_mtime:
         print(f"[INFO] {active_source.name} is newer than the BM25 cache — rebuilding.")
->>>>>>> 581e75a (final deploy changes)
         return False
 
     try:
