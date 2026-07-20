@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 import torch
 import numpy as np
+import joblib
 from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
@@ -22,6 +23,15 @@ DATA_DIR = BASE_DIR / "database"
 CHUNKS = DATA_DIR / "chunks.json"
 EMBEDDINGS = DATA_DIR / "chunk_embeddings.npy"
 EMBEDDING_IDS = DATA_DIR / "chunk_ids.npy"
+
+# CHANGED: joblib cache for the BM25 index build. Tokenizing ~9k chunks and
+# building BM25Okapi is real CPU work that otherwise reruns on every cold
+# start (e.g. every time a Codespaces container spins up). Cached here
+# alongside the parsed chunks list + id lookup, since all three are cheap
+# to keep together and expensive to rebuild. Invalidated automatically if
+# chunks.json changes (mtime check) — no stale cache risk after a future
+# sync_website.py run updates the data.
+BM25_CACHE = DATA_DIR / "bm25_cache.joblib"
 
 # Must match the model name used in embed_chunks.py.
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
@@ -68,25 +78,31 @@ def initialize_retrieval():
 
     print("[INFO] Initializing Retrieval System...")
 
-    chunks = load_chunks()
+    if _load_from_cache():
+        print(f"[INFO] Loaded chunks + BM25 index from cache "
+              f"({len(chunks)} chunks) — skipped rebuild.")
+    else:
+        chunks = load_chunks()
 
-    # FIXED: this was previously keyed on chunk["chunk_id"], which is only
-    # a PER-DOCUMENT local index (0, 1, 2, ... resets for every source page
-    # / PDF) — 2,285 of 9,184 chunks share chunk_id=0 alone. That collapsed
-    # this dict down to ~1,300 entries (later chunks silently overwrote
-    # earlier ones with the same chunk_id) and, worse, meant hybrid_search's
-    # RRF fusion below was merging scores across completely unrelated
-    # chunks that happened to share a chunk_id, and the final lookup could
-    # hand back a different chunk than the one actually retrieved.
-    # "id" is globally unique across all 9,184 chunks — use that instead.
-    chunk_lookup = {chunk["id"]: chunk for chunk in chunks}
+        # FIXED: this was previously keyed on chunk["chunk_id"], which is only
+        # a PER-DOCUMENT local index (0, 1, 2, ... resets for every source page
+        # / PDF) — 2,285 of 9,184 chunks share chunk_id=0 alone. That collapsed
+        # this dict down to ~1,300 entries (later chunks silently overwrote
+        # earlier ones with the same chunk_id) and, worse, meant hybrid_search's
+        # RRF fusion below was merging scores across completely unrelated
+        # chunks that happened to share a chunk_id, and the final lookup could
+        # hand back a different chunk than the one actually retrieved.
+        # "id" is globally unique across all 9,184 chunks — use that instead.
+        chunk_lookup = {chunk["id"]: chunk for chunk in chunks}
 
-    # BM25
-    def tokenize(text):
-        return re.findall(r"[A-Za-z0-9._-]+", text.lower())
+        # BM25
+        def tokenize(text):
+            return re.findall(r"[A-Za-z0-9._-]+", text.lower())
 
-    corpus = [tokenize(chunk["text"]) for chunk in chunks]
-    bm25 = BM25Okapi(corpus)
+        corpus = [tokenize(chunk["text"]) for chunk in chunks]
+        bm25 = BM25Okapi(corpus)
+
+        _save_to_cache()
 
     # Embedding Model — still needed to encode incoming queries at search time.
     device = "cuda" if hasattr(torch, 'cuda') and torch.cuda.is_available() else "cpu"
@@ -104,6 +120,41 @@ def initialize_retrieval():
         print(f"[INFO] Loaded {chunk_embeddings.shape[0]} chunk embeddings "
               f"(dim={chunk_embeddings.shape[1]}).")
         print("[INFO] Retrieval system initialized successfully.")
+
+
+def _load_from_cache():
+    """Load {chunks, chunk_lookup, bm25} from the joblib cache if it exists
+    and is not stale (i.e. chunks.json hasn't been modified since the cache
+    was built). Returns True on success, False if a rebuild is needed."""
+    global chunks, chunk_lookup, bm25
+
+    if not BM25_CACHE.exists() or not CHUNKS.exists():
+        return False
+
+    if BM25_CACHE.stat().st_mtime < CHUNKS.stat().st_mtime:
+        print("[INFO] chunks.json is newer than the BM25 cache — rebuilding.")
+        return False
+
+    try:
+        cached = joblib.load(BM25_CACHE)
+        chunks = cached["chunks"]
+        chunk_lookup = cached["chunk_lookup"]
+        bm25 = cached["bm25"]
+        return True
+    except Exception as e:
+        print(f"[WARNING] Failed to load BM25 cache, rebuilding: {e}")
+        return False
+
+
+def _save_to_cache():
+    try:
+        joblib.dump(
+            {"chunks": chunks, "chunk_lookup": chunk_lookup, "bm25": bm25},
+            BM25_CACHE,
+        )
+        print(f"[INFO] Saved BM25 cache to {BM25_CACHE}")
+    except Exception as e:
+        print(f"[WARNING] Failed to save BM25 cache: {e}")
 
 
 def semantic_search(query, top_k=20):
