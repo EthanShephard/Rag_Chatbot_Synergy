@@ -14,6 +14,7 @@ from backend.retrieval import (
     extract_keywords,
     scrub_price_disclaimer,
     convert_bare_usd_rows,
+    scrub_other_emails,
     initialize_retrieval,
 )
 
@@ -132,7 +133,7 @@ def ask(question, session_id):
 Page: {c.get('page', '')}
 
 Content:
-{scrub_price_disclaimer(convert_bare_usd_rows(c['text']))}"""
+{scrub_price_disclaimer(convert_bare_usd_rows(scrub_other_emails(c['text'])))}"""
         for c in results
     )
 
