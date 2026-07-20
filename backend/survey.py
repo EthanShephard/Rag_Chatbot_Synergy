@@ -76,6 +76,12 @@ SURVEYS = {
                         "text": "Test & Measurement",
                         "value": "Test & Measurement",
                         "next": "test_measurement"
+                    },
+
+                    {
+                        "text": "Masts",
+                        "value": "Masts",
+                        "next": "masts"
                     }
 
                 ]
@@ -661,6 +667,64 @@ SURVEYS = {
             },
 
             # -------------------------------------------------
+            # Masts
+            # -------------------------------------------------
+
+            "masts": {
+
+                "question": "Which type of Mast?",
+
+                "key": "subcategory",
+
+                "options": [
+
+                    {
+                        "text": "Locking Telescopic Mast",
+                        "value": "Locking Telescopic Mast",
+                        "price": None,
+                        "next": "quantity"
+                    },
+
+                    {
+                        "text": "Pneumatic Telescopic Mast",
+                        "value": "Pneumatic Telescopic Mast",
+                        "price": None,
+                        "next": "quantity"
+                    },
+
+                    {
+                        "text": "CCTV Mast",
+                        "value": "CCTV Mast",
+                        "price": None,
+                        "next": "quantity"
+                    },
+
+                    {
+                        "text": "Lighting Mast / Tower",
+                        "value": "Lighting Mast / Tower",
+                        "price": None,
+                        "next": "quantity"
+                    },
+
+                    {
+                        "text": "Mobile Trailer Mast Tower System",
+                        "value": "Mobile Trailer Mast Tower System",
+                        "price": None,
+                        "next": "quantity"
+                    },
+
+                    {
+                        "text": "Mast Accessories (Tripods, Compressors, Jacks, etc.)",
+                        "value": "Mast Accessories",
+                        "price": None,
+                        "next": "quantity"
+                    }
+
+                ]
+
+            },
+
+            # -------------------------------------------------
             # Quantity
             # -------------------------------------------------
 
@@ -755,6 +819,7 @@ CATEGORY_URLS = {
     "Cable Assemblies": "https://rfconnector.in/product_showroom/cable_assembly",
     "Antennas": "https://rfconnector.in/product_showroom/antenna",
     "RF Adaptors": "https://rfconnector.in/product_showroom/rf_adaptor",
+    "Masts": "https://www.rfconnector.in/product_showroom/telescopic_mast",
 
     # TODO: verify these against the live site structure
     "Microwave Components": "https://synergytpl.com/microwave-components",
