@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from openai import OpenAI
 from filelock import FileLock
 
-from backend.survey import SURVEYS, CATEGORY_URLS, CURRENCY
+from backend.survey import SURVEYS, CATEGORY_URLS, CONNECTOR_TYPE_URLS, CURRENCY
 # CHANGED: OLLAMA_HOST no longer needed here — drop it from backend.config
 # if nothing else in the project still uses it.
 
@@ -239,25 +239,23 @@ Rules:
             if previous_selection else ""
         )
 
-        prompt = f"""{context}Now ask them, in one short friendly sentence: "{node['question']}"
-Do not invent information. Do not answer on their behalf. Do not mention price or stock."""
+        prompt = f"{context}Now ask them, in one short friendly sentence: "{node['question']}" Do not invent information. Do not answer on their behalf. Do not mention price or stock."
 
         return self._generate(prompt, fallback)
 
     def _narrate_completion(self, answers):
 
-        subcategory = answers.get("subcategory", "")
+        item = answers.get("product_variant") or answers.get("subcategory", "")
         quantity = answers.get("quantity", "")
 
         fallback = (
-            f"Thanks — that's {quantity} unit(s) of {subcategory} noted. "
+            f"Thanks — that's {quantity} unit(s) of {item} noted. "
             "Would you like to visit our website or send us an email request for it?"
         )
 
-        prompt = f"""The customer just finished a product inquiry for {quantity} unit(s) of "{subcategory}".
+        prompt = f"""The customer just finished a product inquiry for {quantity} unit(s) of "{item}".
 Write one short, warm sentence thanking them for the inquiry, then ask whether they'd like to
-visit our website or send an email request regarding the product they chose.
-Do not mention price, stock, or specs. Under 40 words."""
+visit our website or send an email request regarding the product they chose. Do not mention price, stock, or specs. Under 40 words."""
 
         return self._generate(prompt, fallback)
 
@@ -329,12 +327,26 @@ Do not mention price, stock, or specs. Under 40 words."""
         draft = self._draft_email(answers)
 
         category = answers.get("product", "")
-        website = CATEGORY_URLS.get(
-            category,
-            CATEGORY_URLS.get("_default")
+        subcategory = answers.get("subcategory", "")
+
+        # Prefer the connector-type-specific showroom page (e.g. the
+        # exact SMA page) over the generic RF Connectors landing page,
+        # falling back to the category-level URL when we don't have a
+        # dedicated page for that specific connector type.
+        website = (
+            CONNECTOR_TYPE_URLS.get(subcategory)
+            or CATEGORY_URLS.get(category, CATEGORY_URLS.get("_default"))
         )
 
-        subject_item = answers.get("subcategory") or category
+        # The most specific thing the customer picked: the exact leaf
+        # product (e.g. "SMA F RA LMR 100 CRIMP GP") if the survey drilled
+        # that deep, otherwise whatever they described in their own words,
+        # otherwise the connector type/category itself.
+        subject_item = (
+            answers.get("product_variant")
+            or subcategory
+            or category
+        )
 
         return {
             "type": "survey_complete",
@@ -361,37 +373,55 @@ Do not mention price, stock, or specs. Under 40 words."""
 
         category = answers.get("product", "")
         subcategory = answers.get("subcategory", "")
+        product_variant = answers.get("product_variant", "")
         quantity = answers.get("quantity", 1)
         email = answers.get("email", "")
 
-        pricing_line = self._pricing_line(subcategory, quantity)
+        # The exact item the customer wants quoted. If the survey drilled
+        # down to a specific leaf SKU, that's the precise thing to quote —
+        # not the connector-type category above it.
+        exact_item = product_variant or subcategory or category
+
+        datasheet_url = self._find_datasheet_url(product_variant) if product_variant else None
+        pricing_line = self._pricing_line(product_variant or subcategory, quantity)
+
+        datasheet_line = (
+            f"Datasheet reference: {datasheet_url}" if datasheet_url
+            else "No datasheet on file for this exact item — sales team to confirm specs."
+        )
 
         prompt = f"""Write a short, professional purchase-inquiry email on behalf of a customer, addressed to the Synergy Telecom sales team.
 
 Customer email: {email}
 Product category: {category}
-Specific item: {subcategory}
+Connector type: {subcategory}
+EXACT item requested (quote this precise part — do not generalize or substitute a different variant): {exact_item}
 Quantity requested: {quantity}
 Pricing note to include verbatim: {pricing_line}
+{datasheet_line}
 
 Rules:
-- Under 110 words.
-- Do not invent specs, pricing, or stock availability beyond the pricing note given above.
+- Under 120 words.
+- You MUST state the EXACT item text above, verbatim, so the sales team quotes the correct variant — do not paraphrase, shorten, or generalize the part name.
+- Include the datasheet reference line if one is given above.
+- Do not invent specs, pricing, or stock availability beyond what's given above.
 - Mention the quantity requested.
 - Sign off with the customer's email address.
 - Return ONLY the email body. No subject line, no preamble, no markdown."""
 
-        fallback = self._fallback_email(category, subcategory, quantity, email, pricing_line)
+        fallback = self._fallback_email(exact_item, quantity, email, pricing_line, datasheet_url)
 
         return self._generate(prompt, fallback)
 
-    def _fallback_email(self, category, subcategory, quantity, email, pricing_line):
+    def _fallback_email(self, exact_item, quantity, email, pricing_line, datasheet_url):
 
-        item = subcategory or category
+        datasheet_part = f"\nDatasheet: {datasheet_url}\n" if datasheet_url else ""
 
         return (
             f"Hello,\n\n"
-            f"I'm interested in {quantity} unit(s) of {item}. "
+            f"I'm interested in {quantity} unit(s) of the following exact item:\n"
+            f"{exact_item}\n"
+            f"{datasheet_part}\n"
             f"Could you please share a quote and confirm availability?\n\n"
             f"{pricing_line}\n\n"
             f"Thanks,\n{email}"
@@ -426,6 +456,11 @@ Rules:
                     return option
 
         return None
+
+    def _find_datasheet_url(self, product_variant_value):
+
+        option = self._find_leaf_option(product_variant_value)
+        return option.get("datasheet_url") if option else None
 
     def _log_lead(self, answers):
 
