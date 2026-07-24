@@ -20,7 +20,7 @@ const Events = (() => {
     function bindSendButton() {
         UI.sendBtn.addEventListener(
             "click",
-            Chat.send
+            () => Chat.send()
         );
     }
     function bindSuggestions() {
