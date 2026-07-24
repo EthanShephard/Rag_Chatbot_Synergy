@@ -396,6 +396,11 @@ Do not mention price, stock, or specs. Under 40 words."""
             f"Datasheet reference: {datasheet_url}\n" if datasheet_url else ""
         )
 
+        pricing_block = (
+            f"Pricing note, written from the buyer's own voice (include naturally, don't just paste it): {pricing_line}\n"
+            if pricing_line else ""
+        )
+
         prompt = f"""Write a short, professional purchase-inquiry email on behalf of a customer, addressed to the Synergy Telecom sales team.
 
 Customer email: {email}
@@ -403,12 +408,12 @@ Product category: {category}
 Connector type: {subcategory}
 EXACT item requested (quote this precise part — do not generalize or substitute a different variant): {exact_item}
 Quantity requested: {quantity}
-Pricing note to include verbatim: {pricing_line}
-{datasheet_line}
+{pricing_block}{datasheet_line}
 Rules:
 - Under 120 words.
 - You MUST state the EXACT item text above, verbatim, so the sales team quotes the correct variant — do not paraphrase, shorten, or generalize the part name.
 - Include the datasheet reference line only if one is given above — do not mention datasheets at all if none is given, and never say one is missing.
+- Include the pricing note only if one is given above, written as something the buyer themselves would say (e.g. "I saw it listed at X" or "please confirm the price") — never phrase it as the company describing its own confirmation process, and never invent a price if none is given.
 - Do not invent specs, pricing, or stock availability beyond what's given above.
 - Mention the quantity requested.
 - Sign off with the customer's email address.
@@ -421,14 +426,15 @@ Rules:
     def _fallback_email(self, exact_item, quantity, email, pricing_line, datasheet_url):
 
         datasheet_part = f"\nDatasheet: {datasheet_url}\n" if datasheet_url else ""
+        pricing_part = f"\n{pricing_line}\n" if pricing_line else ""
 
         return (
             f"Hello,\n\n"
             f"I'm interested in {quantity} unit(s) of the following exact item:\n"
             f"{exact_item}\n"
-            f"{datasheet_part}\n"
+            f"{datasheet_part}"
+            f"{pricing_part}\n"
             f"Could you please share a quote and confirm availability?\n\n"
-            f"{pricing_line}\n\n"
             f"Thanks,\n{email}"
         )
 
@@ -437,18 +443,24 @@ Rules:
         option = self._find_leaf_option(subcategory_value)
         unit_price = option.get("price") if option else None
 
+        # No price on file — say nothing. "Could you share a quote" already
+        # covers this; a fabricated "to be confirmed by our sales team"
+        # line reads as the company talking about itself in the customer's
+        # own outgoing email, which is backwards.
         if unit_price is None:
-            return "Pricing: to be confirmed by our sales team."
+            return ""
 
         try:
             total = unit_price * int(quantity)
         except (TypeError, ValueError):
             total = unit_price
 
+        # Written from the buyer's voice, referencing a price they saw
+        # listed — not the company describing its own confirmation process.
         return (
-            f"Unit price: {CURRENCY}{unit_price:,.2f} — "
-            f"estimated total for {quantity} unit(s): {CURRENCY}{total:,.2f} "
-            f"(subject to confirmation)."
+            f"Based on the listed unit price of {CURRENCY}{unit_price:,.2f}, "
+            f"I estimate the total for {quantity} unit(s) at {CURRENCY}{total:,.2f} "
+            f"— please confirm before I proceed."
         )
 
     def _find_leaf_option(self, value):
