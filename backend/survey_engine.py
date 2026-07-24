@@ -393,7 +393,7 @@ Do not mention price, stock, or specs. Under 40 words."""
         pricing_line = self._pricing_line(product_variant or subcategory, quantity)
 
         datasheet_line = (
-            f"Datasheet reference: {datasheet_url}\n" if datasheet_url else ""
+            f"Datasheet URL for this exact item: {datasheet_url}\n" if datasheet_url else ""
         )
 
         pricing_block = (
@@ -412,7 +412,7 @@ Quantity requested: {quantity}
 Rules:
 - Under 120 words.
 - You MUST state the EXACT item text above, verbatim, so the sales team quotes the correct variant — do not paraphrase, shorten, or generalize the part name.
-- Include the datasheet reference line only if one is given above — do not mention datasheets at all if none is given, and never say one is missing.
+- Include the datasheet URL only if one is given above, phrased as the buyer citing it themselves to confirm they mean this exact part (e.g. "here's the datasheet for the exact part I need: {{url}}") — never phrase it as the company directing the buyer to look at "their" datasheet, since the buyer is the one sending this link, not receiving it. Do not mention datasheets at all if none is given, and never say one is missing.
 - Include the pricing note only if one is given above, written as something the buyer themselves would say (e.g. "I saw it listed at X" or "please confirm the price") — never phrase it as the company describing its own confirmation process, and never invent a price if none is given.
 - Do not invent specs, pricing, or stock availability beyond what's given above.
 - Mention the quantity requested.
