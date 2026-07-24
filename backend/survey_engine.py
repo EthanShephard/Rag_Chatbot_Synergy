@@ -239,8 +239,8 @@ Rules:
             if previous_selection else ""
         )
 
-        prompt = f"{context}Now ask them, in one short friendly sentence: "{node['question']}" Do not invent information. Do not answer on their behalf. Do not mention price or stock."
-
+        prompt = f"""{context}Now ask them, in one short friendly sentence: "{node['question']}"
+        Do not invent information. Do not answer on their behalf.Do not mention price or stock."""
         return self._generate(prompt, fallback)
 
     def _narrate_completion(self, answers):
