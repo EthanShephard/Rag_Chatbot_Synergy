@@ -240,7 +240,8 @@ Rules:
         )
 
         prompt = f"""{context}Now ask them, in one short friendly sentence: "{node['question']}"
-        Do not invent information. Do not answer on their behalf.Do not mention price or stock."""
+Do not invent information. Do not answer on their behalf. Do not mention price or stock."""
+
         return self._generate(prompt, fallback)
 
     def _narrate_completion(self, answers):
@@ -255,7 +256,8 @@ Rules:
 
         prompt = f"""The customer just finished a product inquiry for {quantity} unit(s) of "{item}".
 Write one short, warm sentence thanking them for the inquiry, then ask whether they'd like to
-visit our website or send an email request regarding the product they chose. Do not mention price, stock, or specs. Under 40 words."""
+visit our website or send an email request regarding the product they chose.
+Do not mention price, stock, or specs. Under 40 words."""
 
         return self._generate(prompt, fallback)
 
@@ -382,12 +384,16 @@ visit our website or send an email request regarding the product they chose. Do 
         # not the connector-type category above it.
         exact_item = product_variant or subcategory or category
 
+        # Datasheets only exist for the RF Connector leaf-product flow.
+        # For every other category (Antennas, Cable Assemblies, etc.) or
+        # a free-text connector description, there was never a datasheet
+        # to begin with — so say nothing rather than raising a "missing"
+        # flag that reads as an error to the customer.
         datasheet_url = self._find_datasheet_url(product_variant) if product_variant else None
         pricing_line = self._pricing_line(product_variant or subcategory, quantity)
 
         datasheet_line = (
-            f"Datasheet reference: {datasheet_url}" if datasheet_url
-            else "No datasheet on file for this exact item — sales team to confirm specs."
+            f"Datasheet reference: {datasheet_url}\n" if datasheet_url else ""
         )
 
         prompt = f"""Write a short, professional purchase-inquiry email on behalf of a customer, addressed to the Synergy Telecom sales team.
@@ -399,11 +405,10 @@ EXACT item requested (quote this precise part — do not generalize or substitut
 Quantity requested: {quantity}
 Pricing note to include verbatim: {pricing_line}
 {datasheet_line}
-
 Rules:
 - Under 120 words.
 - You MUST state the EXACT item text above, verbatim, so the sales team quotes the correct variant — do not paraphrase, shorten, or generalize the part name.
-- Include the datasheet reference line if one is given above.
+- Include the datasheet reference line only if one is given above — do not mention datasheets at all if none is given, and never say one is missing.
 - Do not invent specs, pricing, or stock availability beyond what's given above.
 - Mention the quantity requested.
 - Sign off with the customer's email address.
